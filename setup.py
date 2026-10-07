@@ -6,7 +6,7 @@ readme_path = this_directory / "README.md"
 long_description = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
 
 setup(
-    name="codefetch",
+    name="codefetch-cli",
     version="1.2.0",
     description="Quickly fetch code files from GitHub repositories with simple commands",
     long_description=long_description,
@@ -23,7 +23,6 @@ setup(
     python_requires=">=3.8",
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Environment :: Console",
         "Topic :: Utilities",

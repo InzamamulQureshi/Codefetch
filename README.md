@@ -20,6 +20,12 @@ CodeFetch is a lightweight command-line utility designed to quickly inspect, pre
 
 ## Installation
 
+### From PyPI
+
+```bash
+pip install codefetch-cli
+```
+
 ### From GitHub
 
 ```bash
