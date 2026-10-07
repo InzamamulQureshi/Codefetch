@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codefetch"
+version = "1.2.0"
+description = "Quickly fetch code files from GitHub repositories with simple commands"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Inzamamul Qureshi", email = "inzamamulqureshi@gmail.com" }
+]
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/InzamamulQureshi/Codefetch"
+Repository = "https://github.com/InzamamulQureshi/Codefetch"
+
+[project.scripts]
+codefetch = "codefetch.cli:main"
