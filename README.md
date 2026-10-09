@@ -8,13 +8,13 @@ CodeFetch is a lightweight command-line utility designed to quickly inspect, pre
 
 ## Features
 
-- **Any User & Repository**: Fetch files from any public GitHub repository using intuitive syntax (`codefetch <user>/<repo> <filename>`).
+- **Any User & Repository**: Fetch files from any public GitHub repository using intuitive syntax (`codefetch <owner>/<repo> <filename>`).
 - **Terminal Preview**: Inspect code directly in your console with `--show` without saving it to disk.
-- **Automatic Path & Case Resolution**: Automatically resolves case mismatches (e.g., `exp1.c` -> `EXP1.c`) and finds files nested inside subdirectories.
+- **Automatic Path & Case Resolution**: Automatically resolves case mismatches and finds files nested inside subdirectories.
 - **Repository Discovery**: List all public repositories for any GitHub user with `--repos`.
 - **Tree Exploration**: List all supported code files within a repository with `--list`.
-- **Persistent Defaults**: Configure your preferred default repository and user with `--set-default` and `--set-default-user`.
-- **No Dependencies**: Built using the Python standard library with zero third-party runtime dependencies.
+- **Optional Persistent Defaults**: Save a default repository or user with `--set-default` if you frequently work with the same repository.
+- **Zero Runtime Dependencies**: Built using only the Python standard library with zero third-party dependencies.
 
 ---
 
@@ -48,80 +48,61 @@ pip install .
 
 ### 1. Download Files
 
-Fetch a file from any GitHub repository:
+Fetch a single file from any GitHub repository:
 
 ```bash
-# Fetch from a specific user and repository
-codefetch InzamamulQureshi/Codefetch setup.py
+# Fetch a file from any user and repository
+codefetch owner/repo main.py
 
-# Fetch using explicit flags
-codefetch -u InzamamulQureshi -r Codefetch setup.py
+# Download a configuration or dataset
+codefetch owner/repo data.csv
+codefetch owner/repo config.yaml
 
-# Fetch from a repository under the default user
-codefetch DS EXP1.c
-codefetch -r DS EXP1.c
+# Download using explicit flags
+codefetch -u owner -r repo main.py
 
-# Shorthand path syntax
-codefetch DS/EXP1.c
-
-# Fetch from the default repository
-codefetch 8.1.py
-```
-
-Save to a custom filename or directory using `-o` / `--output`:
-
-```bash
-codefetch -r DS EXP1.c -o my_experiment.c
+# Save with a custom filename or destination path
+codefetch owner/repo main.py -o custom_name.py
 ```
 
 ### 2. Preview in Terminal (Without Downloading)
 
-Display the contents of a file directly in stdout:
+Display the contents of a file directly in stdout with `-s` / `--show`:
 
 ```bash
-# Preview file from default repository
-codefetch --show 8.1.py
-
-# Preview file from another repository
-codefetch --show DS/EXP1.c
-
-# Preview file from any user repository
-codefetch --show InzamamulQureshi/Codefetch setup.py
+# Preview file content in terminal
+codefetch -s owner/repo main.py
+codefetch -s torvalds/linux Makefile
 ```
 
 ### 3. Explore Repositories and Files
 
 ```bash
-# List all public repositories for default user
-codefetch --repos
+# List all code files in a repository
+codefetch -l owner/repo
+codefetch --list owner/repo
 
-# List all public repositories for a specific user
-codefetch --repos -u InzamamulQureshi
-codefetch --repos torvalds
-
-# List code files in the default repository
-codefetch --list
-
-# List code files in another repository
-codefetch -r DS --list
-codefetch --list InzamamulQureshi/Codefetch
+# List all public repositories for any GitHub user
+codefetch -R -u username
+codefetch --repos username
 ```
 
-### 4. Configuration and Defaults
+### 4. Configuration and Defaults (Optional)
 
-Set persistent default preferences stored in `~/.codefetch.json`:
+By default, CodeFetch has no preset repository or user. If you frequently fetch files from the same repository, you can optionally configure defaults:
 
 ```bash
-# Set default repository
-codefetch --set-default DS
+# Set a default repository (saves both user and repo)
+codefetch --set-default owner/repo
 
-# Set default user
-codefetch --set-default-user InzamamulQureshi
+# Now you can fetch files directly without typing the repo name!
+codefetch main.py
+codefetch -l
 
-# View current configuration
+# View current saved configuration
 codefetch --config
 
-# Reset configuration back to factory defaults
+# Reset all configuration back to defaults (no default repository)
 codefetch --reset-config
 ```
 
@@ -131,23 +112,25 @@ codefetch --reset-config
 
 | Flag | Description | Example |
 |---|---|---|
-| `-r`, `--repo` | Target repository name or URL | `codefetch -r DS EXP1.c` |
-| `-u`, `--user` | Target GitHub user or organization | `codefetch -u octocat -r Spoon-Knife --list` |
-| `-b`, `--branch` | Branch name (default: `main`) | `codefetch -b main DS EXP1.c` |
-| `-s`, `--show` | Print file contents to terminal | `codefetch --show 8.1.py` |
-| `-l`, `--list` | List available code files | `codefetch --list DS` |
-| `-R`, `--repos` | List public repositories for user | `codefetch --repos -u InzamamulQureshi` |
-| `-o`, `--output` | Specify destination output filename | `codefetch -r DS EXP1.c -o local.c` |
-| `--set-default` | Set persistent default repository | `codefetch --set-default DS` |
-| `--set-default-user` | Set persistent default user | `codefetch --set-default-user InzamamulQureshi` |
+| `-s`, `--show` | Print file contents to terminal | `codefetch -s owner/repo main.py` |
+| `-o`, `--output` | Specify destination output filename | `codefetch owner/repo main.py -o script.py` |
+| `-l`, `--list` | List available code files in a repository | `codefetch -l owner/repo` |
+| `-R`, `--repos` | List public repositories for a user | `codefetch -R -u username` |
+| `-r`, `--repo` | Specify repository name or URL | `codefetch -r repo main.py` |
+| `-u`, `--user` | Specify GitHub username or organization | `codefetch -u username -r repo main.py` |
+| `-b`, `--branch` | Branch name (default: `main`) | `codefetch -b master owner/repo Makefile` |
+| `--set-default` | Set persistent default repository | `codefetch --set-default owner/repo` |
+| `--set-default-user` | Set persistent default user | `codefetch --set-default-user username` |
 | `--config` | Display active configuration | `codefetch --config` |
-| `--reset-config` | Reset configuration to defaults | `codefetch --reset-config` |
+| `--reset-config` | Reset configuration back to defaults | `codefetch --reset-config` |
 | `-v`, `--version` | Display version information | `codefetch --version` |
 | `-h`, `--help` | Display help and usage message | `codefetch --help` |
 
 ---
 
 ## Supported File Extensions
+
+CodeFetch recognizes and lists common source and document files:
 
 - **Data & Tables**: `.csv`, `.tsv`, `.json`, `.jsonl`, `.yaml`, `.yml`, `.toml`, `.xml`, `.ini`, `.cfg`, `.conf`, `.env`
 - **Data Science**: `.ipynb`, `.py`, `.r`, `.rmd`, `.m`

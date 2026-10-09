@@ -12,8 +12,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-DEFAULT_OWNER = "Reaver101"
-DEFAULT_REPO = "MPL"
+DEFAULT_OWNER = None
+DEFAULT_REPO = None
 DEFAULT_BRANCH = "main"
 
 CONFIG_FILE = Path.home() / ".codefetch.json"
@@ -55,42 +55,37 @@ HELP_MESSAGE = """\
 CodeFetch - Download single code files from GitHub without cloning entire repos.
 
 USAGE:
-  codefetch <filename>                  Download a file from default repo (MPL)
-  codefetch <repo> <filename>           Download from another repo (e.g. DS EXP1.c)
-  codefetch <user>/<repo> <filename>    Download from any GitHub user/repo
+  codefetch <owner>/<repo> <filename>      Download a file from any GitHub repository
+  codefetch <filename>                     Download a file (requires default repository)
 
 QUICK EXAMPLES:
   Download a file:
-    codefetch 8.1.py                    Save 8.1.py to current directory
-    codefetch data.csv                  Save data.csv to current directory
-    codefetch DS EXP1.c                 Save EXP1.c from repo 'DS'
-    codefetch DS EXP1.c -o my_code.c    Save with a custom output filename
-    codefetch InzamamulQureshi/Codefetch setup.py
+    codefetch torvalds/linux Makefile        Save Makefile to current directory
+    codefetch owner/repo main.py             Save main.py from a repository
+    codefetch owner/repo data.csv -o out.csv Save with a custom output filename
 
   View code in terminal (without downloading):
-    codefetch -s 8.1.py                 Display 8.1.py in terminal
-    codefetch -s DS EXP1.c              Display EXP1.c in terminal
+    codefetch -s owner/repo main.py          Display main.py in terminal
+    codefetch -s torvalds/linux Makefile     Display Makefile in terminal
 
   Browse files and repositories:
-    codefetch -l                        List all code files in default repo (MPL)
-    codefetch -l DS                     List all code files in repo 'DS'
-    codefetch -l user/repo              List code files in any user repository
-    codefetch -R                        List all repositories of default user (Reaver101)
-    codefetch -R -u <username>          List all repositories of any GitHub user
+    codefetch -l owner/repo                  List all code files in a repository
+    codefetch -R -u <username>               List all public repositories of a user
+    codefetch -R <username>                  List all public repositories of a user
 
-SETTINGS & DEFAULTS:
-  codefetch --set-default <repo>        Set permanent default repo (e.g. DS)
-  codefetch --set-default-user <user>   Set permanent default GitHub user
-  codefetch --config                    View current active settings
-  codefetch --reset-config              Reset all settings back to default
+SETTINGS & DEFAULTS (Optional):
+  codefetch --set-default <owner/repo>     Set a permanent default repository
+  codefetch --set-default-user <username>  Set a permanent default GitHub user
+  codefetch --config                       View current saved settings
+  codefetch --reset-config                 Clear saved settings
 
 OPTIONS:
   -s, --show             View file contents in terminal instead of saving
   -o, --output <file>    Custom filename or path to save the downloaded file
-  -l, --list             List available code files in the repository
-  -R, --repos            List all public repositories for the user
+  -l, --list [repo]      List available code files in a repository
+  -R, --repos [user]     List all public repositories for a user
   -r, --repo <name>      Specify repository name or URL
-  -u, --user <name>      Specify GitHub username (default: Reaver101)
+  -u, --user <name>      Specify GitHub username
   -b, --branch <name>    Specify branch name (default: main)
   -v, --version          Show version number
   -h, --help             Show this help guide
@@ -157,7 +152,7 @@ def get_json(url):
         return json.loads(response.read().decode("utf-8"))
 
 
-def parse_repo_identifier(repo_str, default_owner=DEFAULT_OWNER):
+def parse_repo_identifier(repo_str, default_owner=None):
     """Extract (owner, repo) from a repository flag, name, or URL."""
     if not repo_str:
         return default_owner, None
@@ -199,8 +194,15 @@ def get_user_repos(owner):
         return []
 
 
-def list_repos(owner=DEFAULT_OWNER, default_repo=DEFAULT_REPO):
+def list_repos(owner=None, default_repo=None):
     """List all public repositories for the owner."""
+    if not owner:
+        print("Error: No GitHub user specified.\n")
+        print("Usage:")
+        print("  codefetch -R <username>")
+        print("  codefetch -R -u <username>")
+        return
+
     try:
         repos = get_user_repos(owner)
         if not repos:
@@ -211,15 +213,15 @@ def list_repos(owner=DEFAULT_OWNER, default_repo=DEFAULT_REPO):
         for r in repos:
             name = r.get("name", "")
             desc = r.get("description") or ""
-            is_def = " (default)" if name.lower() == default_repo.lower() else ""
+            is_def = " (default)" if default_repo and name.lower() == default_repo.lower() else ""
             marker = "*" if is_def else "-"
             desc_text = f" - {desc}" if desc else ""
             print(f"  {marker} {name}{is_def}{desc_text}")
 
         print("\nCommands:")
-        print(f"  codefetch -u {owner} -r <repo> --list        List files in a repository")
-        print(f"  codefetch -u {owner} -r <repo> <filename>    Download a file from a repository")
-        print(f"  codefetch --set-default <repo>              Set default repository")
+        print(f"  codefetch -l {owner}/<repo>                  List files in a repository")
+        print(f"  codefetch {owner}/<repo> <filename>          Download a file from a repository")
+        print(f"  codefetch --set-default {owner}/<repo>       Set default repository")
 
     except urllib.error.HTTPError as e:
         print(f"Could not list repositories: HTTP {e.code}")
@@ -231,6 +233,13 @@ def list_repos(owner=DEFAULT_OWNER, default_repo=DEFAULT_REPO):
 
 def list_files(owner, repo, branch="main"):
     """List code files in a repository."""
+    if not owner or not repo:
+        print("Error: No repository specified to list.\n")
+        print("Usage:")
+        print("  codefetch -l <owner>/<repo>")
+        print("  codefetch -u <owner> -r <repo> -l")
+        return
+
     try:
         data = get_repo_tree(owner, repo, branch)
         if data.get("truncated"):
@@ -284,7 +293,7 @@ def resolve_file_in_tree(tree_data, target_filename):
     Search tree for target_filename:
     1. Exact match (case-insensitive) on full path
     2. Exact match (case-insensitive) on basename
-    3. Match without extension (e.g. 'exp1' -> 'EXP1.c')
+    3. Match without extension (e.g. 'main' -> 'main.py')
     """
     blobs = [item["path"] for item in tree_data.get("tree", []) if item.get("type") == "blob"]
     target_clean = target_filename.strip("/\\").lower()
@@ -318,11 +327,13 @@ def resolve_file_in_tree(tree_data, target_filename):
 
 def find_file_in_other_repos(owner, current_repo, target_filename):
     """Search other public repositories of the user for the target file."""
+    if not owner:
+        return None, None
     try:
         repos_data = get_user_repos(owner)
         for r in repos_data:
             r_name = r.get("name")
-            if not r_name or r_name.lower() == current_repo.lower():
+            if not r_name or (current_repo and r_name.lower() == current_repo.lower()):
                 continue
             default_branch = r.get("default_branch", "main")
             try:
@@ -337,9 +348,19 @@ def find_file_in_other_repos(owner, current_repo, target_filename):
     return None, None
 
 
-def fetch_file(filename, owner=DEFAULT_OWNER, repo=DEFAULT_REPO, branch=DEFAULT_BRANCH,
+def fetch_file(filename, owner=None, repo=None, branch=DEFAULT_BRANCH,
                show=False, output=None):
     """Fetch or download a file from GitHub."""
+    if not owner or not repo:
+        print("Error: No GitHub repository specified.\n")
+        print("Usage:")
+        print("  codefetch <owner>/<repo> <filename>")
+        print("  codefetch -u <owner> -r <repo> <filename>\n")
+        print("To set a default repository:")
+        print("  codefetch --set-default <owner>/<repo>\n")
+        print("Run 'codefetch --help' for more options.")
+        return
+
     clean_filename = filename.strip("/\\")
 
     def download_url(url):
@@ -373,11 +394,11 @@ def fetch_file(filename, owner=DEFAULT_OWNER, repo=DEFAULT_REPO, branch=DEFAULT_
                     if other_repo:
                         print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
                         print(f"\n[Tip] Found '{other_match}' in repository '{other_repo}'!")
-                        print(f"To fetch it, run:\n  codefetch -u {owner} -r {other_repo} {other_match}")
+                        print(f"To fetch it, run:\n  codefetch {owner}/{other_repo} {other_match}")
                         return
                     else:
                         print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
-                        print(f"Run 'codefetch -u {owner} -r {repo} --list' to see available files.")
+                        print(f"Run 'codefetch -l {owner}/{repo}' to see available files.")
                         return
             except Exception:
                 print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
@@ -427,17 +448,17 @@ def build_parser():
     parser.add_argument(
         "args",
         nargs="*",
-        help="Target specification: [user/repo] [filename] or [filename]",
+        help="Target specification: <owner>/<repo> <filename> or <filename>",
     )
     parser.add_argument(
         "-r", "--repo",
         default=None,
-        help="Repository name or URL (e.g. DS, Codefetch, or user/repo)",
+        help="Repository name or URL (e.g. repo or owner/repo)",
     )
     parser.add_argument(
         "-u", "--user",
         default=None,
-        help=f"GitHub user/org (default: {DEFAULT_OWNER})",
+        help="GitHub user/org name",
     )
     parser.add_argument(
         "-b", "--branch",
@@ -452,7 +473,7 @@ def build_parser():
     parser.add_argument(
         "-R", "--repos",
         action="store_true",
-        help="List all public repositories for the user",
+        help="List all public repositories for a user",
     )
     parser.add_argument(
         "-s", "--show",
@@ -487,13 +508,13 @@ def build_parser():
     parser.add_argument(
         "-v", "--version",
         action="version",
-        version="codefetch 1.2.1",
+        version="codefetch 1.2.2",
     )
     return parser
 
 
 def resolve_invocation(positional_args, repo_flag, user_flag, branch_flag,
-                       default_owner, default_repo, default_branch, known_repos=None):
+                       default_owner, default_repo, default_branch):
     """
     Resolve arguments into (owner, repo, branch, filename).
     """
@@ -530,7 +551,7 @@ def resolve_invocation(positional_args, repo_flag, user_flag, branch_flag,
     if m:
         return m.group(1), m.group(2), m.group(3), m.group(4)
 
-    # 3. Colon syntax: user/repo:filename or repo:filename
+    # 3. Colon syntax: user/repo:filename
     if ":" in target:
         repo_part, file_part = target.split(":", 1)
         p_owner, p_repo = parse_repo_identifier(repo_part, default_owner=owner)
@@ -542,9 +563,12 @@ def resolve_invocation(positional_args, repo_flag, user_flag, branch_flag,
         return parts[0], parts[1], branch, "/".join(parts[2:])
 
     if len(parts) == 2:
-        return owner, parts[0], branch, parts[1]
+        if owner:
+            return owner, parts[0], branch, parts[1]
+        else:
+            return parts[0], parts[1], branch, None
 
-    # Single filename, e.g. 8.1.py
+    # Single filename, e.g. main.py (requires default_owner and default_repo)
     return owner, repo, branch, target
 
 
@@ -565,7 +589,7 @@ def main():
             except Exception as e:
                 print(f"Error removing config file: {e}")
                 return
-        print(f"Configuration reset to defaults (User: {DEFAULT_OWNER}, Repo: {DEFAULT_REPO}).")
+        print("Configuration reset to defaults (no default repository or user).")
         return
 
     # Handle --set-default-user
@@ -577,9 +601,10 @@ def main():
 
     # Handle --set-default
     if args.set_default:
-        owner_to_save = args.user if args.user else None
-        save_config(owner=owner_to_save, repo=args.set_default)
-        print(f"Default repository updated to: '{args.set_default}'")
+        owner_part, repo_part = parse_repo_identifier(args.set_default, default_owner=args.user)
+        owner_to_save = owner_part or (args.user if args.user else None)
+        save_config(owner=owner_to_save, repo=repo_part)
+        print(f"Default repository updated to: '{repo_part}'")
         if owner_to_save:
             print(f"Default user updated to: '{owner_to_save}'")
         print(f"Saved to: {CONFIG_FILE}")
@@ -588,8 +613,8 @@ def main():
     # Handle --config
     if args.config:
         print("CodeFetch Configuration:")
-        print(f"  Default User:        {default_owner}")
-        print(f"  Default Repository:  {default_repo}")
+        print(f"  Default User:        {default_owner or 'None (not set)'}")
+        print(f"  Default Repository:  {default_repo or 'None (not set)'}")
         print(f"  Default Branch:      {default_branch}")
         print(f"  Config File:         {CONFIG_FILE}")
         return
@@ -602,6 +627,12 @@ def main():
         target_owner = owner
         if args.args:
             target_owner = args.args[0]
+        if not target_owner:
+            print("Error: No GitHub user specified.\n")
+            print("Usage:")
+            print("  codefetch --repos <username>")
+            print("  codefetch -R -u <username>")
+            return
         list_repos(owner=target_owner, default_repo=default_repo)
         return
 
@@ -613,6 +644,12 @@ def main():
             target_owner, target_repo = parse_repo_identifier(args.repo, default_owner=owner)
         elif args.args:
             target_owner, target_repo = parse_repo_identifier(args.args[0], default_owner=owner)
+        if not target_owner or not target_repo:
+            print("Error: No repository specified to list.\n")
+            print("Usage:")
+            print("  codefetch -l <owner>/<repo>")
+            print("  codefetch -u <owner> -r <repo> -l")
+            return
         list_files(owner=target_owner, repo=target_repo, branch=branch)
         return
 
@@ -620,8 +657,6 @@ def main():
     if not args.args and not args.repo:
         parser.print_help()
         return
-
-    known_repos = [default_repo, "DS", "MPL", "Discord-Chatbot", "Codefetch"]
 
     resolved_owner, resolved_repo, resolved_branch, resolved_filename = resolve_invocation(
         args.args,
@@ -631,14 +666,12 @@ def main():
         default_owner,
         default_repo,
         default_branch,
-        known_repos=known_repos,
     )
 
     if not resolved_filename:
         print("Error: No filename specified.\n")
         print("Usage:")
-        print("  codefetch <filename>                  Download a file")
-        print("  codefetch <repo> <filename>           Download from a repository")
+        print("  codefetch <owner>/<repo> <filename>")
         print("  codefetch --help                      View full guide and examples")
         return
 
