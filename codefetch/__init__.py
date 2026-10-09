@@ -16,7 +16,7 @@ Usage in Python:
     files = cf.list("torvalds/linux")
 """
 
-__version__ = "1.2.7"
+__version__ = "1.2.8"
 
 
 def get(target, filename=None, branch=None):
