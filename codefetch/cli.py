@@ -18,7 +18,7 @@ DEFAULT_REPO = None
 
 CONFIG_FILE = Path.home() / ".codefetch.json"
 
-__version__ = "1.2.6"
+__version__ = "1.2.7"
 
 # Supported code, data, and config extensions
 CODE_EXTENSIONS = {
@@ -641,7 +641,7 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
 
 
 def parse_version_tuple(v_str):
-    """Parse version string like '1.2.6' into a comparable tuple of integers."""
+    """Parse version string like '1.2.7' into a comparable tuple of integers."""
     try:
         return tuple(int(x) for x in re.findall(r"\d+", v_str))
     except Exception:
@@ -672,22 +672,40 @@ def update_codefetch():
             return
 
         print(f"Update available: v{latest_version} (current: v{__version__})")
-        print(f"Updating {package_name}...")
     else:
-        print(f"Updating {package_name} to latest version...")
+        print(f"Checking {package_name}...")
 
-    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package_name]
-    try:
-        result = subprocess.run(cmd)
-        if result.returncode == 0:
-            target_v = f"v{latest_version}" if latest_version else "the latest version"
-            print(f"\nSuccessfully updated CodeFetch to {target_v}!")
-        else:
-            print(f"\nUpdate failed (exit code {result.returncode}).")
+    print(f"Updating {package_name}...")
+
+    if sys.platform == "win32":
+        # On Windows, pip cannot overwrite codefetch.exe while this process is executing it.
+        # Spawn PowerShell to wait 800ms for this process to exit, then run pip install cleanly.
+        target_v = f"v{latest_version}" if latest_version else "latest version"
+        ps_cmd = (
+            f"Start-Sleep -Milliseconds 800; "
+            f"& '{sys.executable}' -m pip install --upgrade {package_name}; "
+            f"if ($LASTEXITCODE -eq 0) {{ Write-Host '`nSuccessfully updated CodeFetch to {target_v}!' }} "
+            f"else {{ Write-Host '`nUpdate failed. You can manually update with: pip install --upgrade {package_name}' }}"
+        )
+        try:
+            subprocess.Popen(["powershell", "-NoProfile", "-Command", ps_cmd])
+            sys.exit(0)
+        except Exception as e:
+            print(f"\nError launching updater: {e}")
             print(f"You can manually update with: pip install --upgrade {package_name}")
-    except Exception as e:
-        print(f"\nError running update: {e}")
-        print(f"You can manually update with: pip install --upgrade {package_name}")
+    else:
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package_name]
+        try:
+            result = subprocess.run(cmd)
+            if result.returncode == 0:
+                target_v = f"v{latest_version}" if latest_version else "the latest version"
+                print(f"\nSuccessfully updated CodeFetch to {target_v}!")
+            else:
+                print(f"\nUpdate failed (exit code {result.returncode}).")
+                print(f"You can manually update with: pip install --upgrade {package_name}")
+        except Exception as e:
+            print(f"\nError running update: {e}")
+            print(f"You can manually update with: pip install --upgrade {package_name}")
 
 
 def uninstall_codefetch(yes=False):
@@ -712,17 +730,35 @@ def uninstall_codefetch(yes=False):
             pass
 
     print("Uninstalling codefetch-cli...")
-    cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "codefetch-cli"]
-    try:
-        result = subprocess.run(cmd)
-        if result.returncode == 0:
-            print("\nSuccessfully uninstalled CodeFetch.")
-        else:
-            print(f"\nUninstall failed (exit code {result.returncode}).")
+
+    if sys.platform == "win32":
+        # On Windows, pip cannot delete codefetch.exe while this process is executing it.
+        # Spawn PowerShell to wait 800ms for this process to exit, then run pip uninstall cleanly.
+        ps_cmd = (
+            f"Start-Sleep -Milliseconds 800; "
+            f"& '{sys.executable}' -m pip uninstall -y codefetch-cli; "
+            f"& '{sys.executable}' -m pip uninstall -y codefetch; "
+            f"if ($LASTEXITCODE -eq 0) {{ Write-Host '`nSuccessfully uninstalled CodeFetch.' }} "
+            f"else {{ Write-Host '`nUninstall failed. You can manually uninstall with: pip uninstall codefetch-cli' }}"
+        )
+        try:
+            subprocess.Popen(["powershell", "-NoProfile", "-Command", ps_cmd])
+            sys.exit(0)
+        except Exception as e:
+            print(f"\nError launching uninstaller: {e}")
             print("You can manually uninstall with: pip uninstall codefetch-cli")
-    except Exception as e:
-        print(f"\nError during uninstall: {e}")
-        print("You can manually uninstall with: pip uninstall codefetch-cli")
+    else:
+        cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "codefetch-cli"]
+        try:
+            result = subprocess.run(cmd)
+            if result.returncode == 0:
+                print("\nSuccessfully uninstalled CodeFetch.")
+            else:
+                print(f"\nUninstall failed (exit code {result.returncode}).")
+                print("You can manually uninstall with: pip uninstall codefetch-cli")
+        except Exception as e:
+            print(f"\nError during uninstall: {e}")
+            print("You can manually uninstall with: pip uninstall codefetch-cli")
 
 
 class CodefetchParser(argparse.ArgumentParser):
