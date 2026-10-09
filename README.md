@@ -2,7 +2,7 @@
 
 Quickly fetch code files from GitHub repositories with simple commands.
 
-CodeFetch is a lightweight command-line utility designed to quickly inspect, preview, and download individual source code files directly from any GitHub repository without needing to clone full repositories.
+CodeFetch is a lightweight command-line utility and Python library designed to quickly inspect, preview, and download individual source code files directly from any GitHub repository without needing to clone full repositories.
 
 ---
 
@@ -13,6 +13,7 @@ CodeFetch is a lightweight command-line utility designed to quickly inspect, pre
 - **Automatic Path & Case Resolution**: Automatically resolves case mismatches and finds files nested inside subdirectories.
 - **Repository Discovery**: List all public repositories for any GitHub user with `--repos`.
 - **Tree Exploration**: List all supported code files within a repository with `--list`.
+- **Python Library Support**: Import and use programmatically with `import codefetch as cf`.
 - **Optional Persistent Defaults**: Save a default repository or user with `--set-default` if you frequently work with the same repository.
 - **Zero Runtime Dependencies**: Built using only the Python standard library with zero third-party dependencies.
 
@@ -104,6 +105,28 @@ codefetch --config
 
 # Reset all configuration back to defaults (no default repository)
 codefetch --reset-config
+```
+
+---
+
+## Python API Usage
+
+You can also use CodeFetch programmatically within your Python scripts:
+
+```python
+import codefetch as cf
+
+# 1. Fetch file content as a string directly in memory
+makefile_text = cf.get("torvalds/linux", "Makefile")
+# Or shorthand single argument syntax:
+readme_text = cf.get("psf/requests/README.md")
+
+# 2. Download a file to disk
+cf.download("torvalds/linux", "Makefile", output="linux_Makefile")
+
+# 3. List all code files in a repository
+files = cf.list("torvalds/linux")
+print(f"Found {len(files)} files")
 ```
 
 ---

@@ -18,6 +18,8 @@ DEFAULT_BRANCH = "main"
 
 CONFIG_FILE = Path.home() / ".codefetch.json"
 
+__version__ = "1.2.3"
+
 # Supported code, data, and config extensions
 CODE_EXTENSIONS = {
     # Data & Tables
@@ -56,85 +58,81 @@ CodeFetch - Download single code files from GitHub without cloning entire repos.
 
 USAGE:
   codefetch <owner>/<repo> <filename>      Download a file from any GitHub repository
-  codefetch <filename>                     Download a file (requires default repository)
+  codefetch <filename>                     Download a file (uses saved default repo)
+  codefetch -s <owner>/<repo> <filename>   Preview file in terminal without saving
+  codefetch -l <owner>/<repo>              List all code files in a repository
+  codefetch -R <username>                  List public repositories for a user
 
-QUICK EXAMPLES:
-  Download a file:
-    codefetch torvalds/linux Makefile        Save Makefile to current directory
-    codefetch owner/repo main.py             Save main.py from a repository
-    codefetch owner/repo data.csv -o out.csv Save with a custom output filename
+POPULAR EXAMPLES:
+  # Download from any repository:
+  codefetch owner/repo main.py
+  codefetch torvalds/linux Makefile
 
-  View code in terminal (without downloading):
-    codefetch -s owner/repo main.py          Display main.py in terminal
-    codefetch -s torvalds/linux Makefile     Display Makefile in terminal
+  # Preview code directly in terminal:
+  codefetch -s owner/repo app.js
+  codefetch -s torvalds/linux Makefile
 
-  Browse files and repositories:
-    codefetch -l owner/repo                  List all code files in a repository
-    codefetch -R -u <username>               List all public repositories of a user
-    codefetch -R <username>                  List all public repositories of a user
+  # Save with a custom name or path:
+  codefetch owner/repo data.csv -o my_data.csv
 
-SETTINGS & DEFAULTS (Optional):
-  codefetch --set-default <owner/repo>     Set a permanent default repository
-  codefetch --set-default-user <username>  Set a permanent default GitHub user
-  codefetch --config                       View current saved settings
-  codefetch --reset-config                 Clear saved settings
+  # Explore repositories and files:
+  codefetch -l torvalds/linux              # list files in a repo
+  codefetch -R torvalds                    # list repos belonging to user
 
-OPTIONS:
-  -s, --show             View file contents in terminal instead of saving
-  -o, --output <file>    Custom filename or path to save the downloaded file
-  -l, --list [repo]      List available code files in a repository
-  -R, --repos [user]     List all public repositories for a user
-  -r, --repo <name>      Specify repository name or URL
-  -u, --user <name>      Specify GitHub username
-  -b, --branch <name>    Specify branch name (default: main)
-  -v, --version          Show version number
-  -h, --help             Show this help guide
+SETTING A DEFAULT REPOSITORY (OPTIONAL):
+  If you frequently work with the same repo, you can set it as default:
+  codefetch --set-default owner/repo       # sets default repo
+  codefetch script.py                      # now you don't need to type owner/repo!
+  codefetch --config                       # view active configuration
+  codefetch --reset-config                 # reset all defaults
+
+FLAGS & OPTIONS:
+  -s, --show                Print file content to terminal instead of downloading
+  -o, --output <file>       Specify output filename or path
+  -l, --list                List available code files in the repository
+  -R, --repos               List public repositories for a GitHub user
+  -r, --repo <repo>         Specify repository name or URL
+  -u, --user <user>         Specify GitHub username / organization
+  -b, --branch <branch>     Specify branch name (default: main)
+  --set-default <repo>      Save default repository (e.g. owner/repo)
+  --set-default-user <user> Save default user/organization
+  --config                  Show current saved configuration
+  --reset-config            Reset configuration back to defaults
+  -v, --version             Show version number
+  -h, --help                Show this help message
 """
 
 
 def load_config():
-    """Load configuration from environment variables and local config file."""
-    config = {
-        "owner": os.environ.get("CODEFETCH_USER", DEFAULT_OWNER),
-        "repo": os.environ.get("CODEFETCH_REPO", DEFAULT_REPO),
-        "branch": os.environ.get("CODEFETCH_BRANCH", DEFAULT_BRANCH),
-    }
+    """Load user configuration from ~/.codefetch.json."""
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                if isinstance(saved, dict):
-                    if saved.get("owner"):
-                        config["owner"] = saved["owner"]
-                    if saved.get("repo"):
-                        config["repo"] = saved["repo"]
-                    if saved.get("branch"):
-                        config["branch"] = saved["branch"]
+                return json.load(f)
         except Exception:
-            pass
-    return config
+            return {}
+    return {}
 
 
 def save_config(owner=None, repo=None, branch=None):
-    """Save configuration to ~/.codefetch.json."""
-    config = load_config()
-    if owner:
-        config["owner"] = owner
-    if repo:
-        config["repo"] = repo
-    if branch:
-        config["branch"] = branch
+    """Save user configuration to ~/.codefetch.json."""
+    cfg = load_config()
+    if owner is not None:
+        cfg["owner"] = owner
+    if repo is not None:
+        cfg["repo"] = repo
+    if branch is not None:
+        cfg["branch"] = branch
+
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2)
-        return True
+            json.dump(cfg, f, indent=2)
     except Exception as e:
-        print(f"Error saving configuration: {e}")
-        return False
+        print(f"Warning: Could not save configuration: {e}")
 
 
 def get_headers():
-    """Get HTTP headers for GitHub requests."""
+    """Build request headers, attaching GITHUB_TOKEN if present in environment."""
     headers = {
         "User-Agent": "codefetch",
         "Accept": "application/vnd.github+json",
@@ -146,10 +144,10 @@ def get_headers():
 
 
 def get_json(url):
-    """Fetch and decode JSON from a URL."""
-    request = urllib.request.Request(url, headers=get_headers())
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return json.loads(response.read().decode("utf-8"))
+    """Fetch JSON from GitHub API with rate limit handling."""
+    req = urllib.request.Request(url, headers=get_headers())
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 
 def parse_repo_identifier(repo_str, default_owner=None):
@@ -170,37 +168,89 @@ def parse_repo_identifier(repo_str, default_owner=None):
     return default_owner, repo_str.removesuffix(".git")
 
 
-def get_repo_tree(owner, repo, branch="main"):
-    """Fetch the Git tree for a repository, with fallback to master if main is absent."""
-    url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+def fetch_raw_direct(owner, repo, branch, clean_filename):
+    """
+    Direct raw fetch from raw.githubusercontent.com.
+    Tries requested branch first. If branch is 'main', also tries 'master',
+    and vice versa.
+    Returns (branch_used, content_str) or (None, None).
+    """
+    branches_to_try = [branch]
+    if branch == "main":
+        branches_to_try.append("master")
+    elif branch == "master":
+        branches_to_try.append("main")
+
+    for b in branches_to_try:
+        url = f"https://raw.githubusercontent.com/{owner}/{repo}/{b}/{clean_filename}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "codefetch"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return b, resp.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                continue
+            raise
+    return None, None
+
+
+def get_repo_tree_with_branch(owner, repo, branch="main"):
+    """
+    Fetch the Git tree for a repository, returning (actual_branch, tree_data).
+    Tries branch first, then fallback to master/main, then checks repository info for default_branch.
+    """
+    branches_to_try = [branch]
+    if branch == "main":
+        branches_to_try.append("master")
+    elif branch == "master":
+        branches_to_try.append("main")
+
+    for b in branches_to_try:
+        url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{b}?recursive=1"
+        try:
+            return b, get_json(url)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                continue
+            raise
+
+    # Query repository info to discover actual default branch (e.g. develop, trunk, etc.)
     try:
-        return get_json(url)
-    except urllib.error.HTTPError as e:
-        if e.code == 404 and branch == "main":
-            url_master = f"https://api.github.com/repos/{owner}/{repo}/git/trees/master?recursive=1"
-            try:
-                return get_json(url_master)
-            except Exception:
-                pass
-        raise
+        info_url = f"https://api.github.com/repos/{owner}/{repo}"
+        info = get_json(info_url)
+        def_branch = info.get("default_branch")
+        if def_branch and def_branch not in branches_to_try:
+            url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{def_branch}?recursive=1"
+            return def_branch, get_json(url)
+    except Exception:
+        pass
+
+    raise urllib.error.HTTPError(
+        f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}",
+        404,
+        "Branch tree not found",
+        {},
+        None,
+    )
+
+
+def get_repo_tree(owner, repo, branch="main"):
+    """Fetch the Git tree for a repository (backwards compatible helper)."""
+    _, tree_data = get_repo_tree_with_branch(owner, repo, branch)
+    return tree_data
 
 
 def get_user_repos(owner):
-    """Fetch public repositories for a given GitHub owner."""
+    """Fetch public repositories list for a user."""
     url = f"https://api.github.com/users/{owner}/repos?per_page=100&sort=updated"
-    try:
-        return get_json(url)
-    except Exception:
-        return []
+    return get_json(url)
 
 
 def list_repos(owner=None, default_repo=None):
-    """List all public repositories for the owner."""
+    """List all public repositories for a GitHub user."""
     if not owner:
-        print("Error: No GitHub user specified.\n")
-        print("Usage:")
-        print("  codefetch -R <username>")
-        print("  codefetch -R -u <username>")
+        print("Error: No GitHub username specified.")
+        print("Usage: codefetch --repos <username>")
         return
 
     try:
@@ -209,15 +259,17 @@ def list_repos(owner=None, default_repo=None):
             print(f"No public repositories found for user '{owner}'.")
             return
 
-        print(f"Repositories for '{owner}':\n")
-        for r in repos:
+        print(f"Public repositories for '{owner}':\n")
+        for i, r in enumerate(repos, 1):
             name = r.get("name", "")
-            desc = r.get("description") or ""
+            desc = r.get("description") or "No description"
             is_def = " (default)" if default_repo and name.lower() == default_repo.lower() else ""
             marker = "*" if is_def else "-"
-            desc_text = f" - {desc}" if desc else ""
-            print(f"  {marker} {name}{is_def}{desc_text}")
+            print(f"  {marker} {name:<22}{is_def}")
+            if desc and desc != "No description":
+                print(f"      {desc}")
 
+        print(f"\nTotal: {len(repos)} repositories")
         print("\nCommands:")
         print(f"  codefetch -l {owner}/<repo>                  List files in a repository")
         print(f"  codefetch {owner}/<repo> <filename>          Download a file from a repository")
@@ -241,7 +293,7 @@ def list_files(owner, repo, branch="main"):
         return
 
     try:
-        data = get_repo_tree(owner, repo, branch)
+        actual_branch, data = get_repo_tree_with_branch(owner, repo, branch)
         if data.get("truncated"):
             print("Warning: GitHub returned a truncated file list.")
 
@@ -262,10 +314,10 @@ def list_files(owner, repo, branch="main"):
         files.sort(key=str.lower)
 
         if not files:
-            print(f"No supported code files found in {owner}/{repo}.")
+            print(f"No supported code files found in {owner}/{repo} ({actual_branch}).")
             return
 
-        print(f"Available files in {owner}/{repo} ({branch}):\n")
+        print(f"Available files in {owner}/{repo} ({actual_branch}):\n")
         for i, path in enumerate(files, 1):
             print(f"{i:>3}. {path}")
 
@@ -368,50 +420,64 @@ def fetch_file(filename, owner=None, repo=None, branch=DEFAULT_BRANCH,
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.read().decode("utf-8")
 
-    # 1. Direct raw fetch first (fastest, preserves GitHub API rate limit)
-    raw_base = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}"
-    url = f"{raw_base}/{clean_filename}"
-
     content = None
     resolved_path = clean_filename
+    actual_branch = branch
 
+    # 1. Direct raw fetch first (fastest, preserves GitHub API rate limit)
     try:
-        content = download_url(url)
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            # 2. Direct fetch 404ed. Try smart resolution with repo tree
-            try:
-                tree_data = get_repo_tree(owner, repo, branch)
-                matched = resolve_file_in_tree(tree_data, clean_filename)
-                if matched:
-                    resolved_path = matched
-                    content = download_url(f"{raw_base}/{resolved_path}")
-                    if resolved_path != clean_filename:
-                        print(f"(Resolved '{clean_filename}' -> '{resolved_path}')")
-                else:
-                    # Check other public repositories for the same user
-                    other_repo, other_match = find_file_in_other_repos(owner, repo, clean_filename)
-                    if other_repo:
-                        print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
-                        print(f"\n[Tip] Found '{other_match}' in repository '{other_repo}'!")
-                        print(f"To fetch it, run:\n  codefetch {owner}/{other_repo} {other_match}")
-                        return
-                    else:
-                        print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
-                        print(f"Run 'codefetch -l {owner}/{repo}' to see available files.")
-                        return
-            except Exception:
-                print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
-                return
-        else:
-            print(f"Download failed: HTTP {e.code}")
-            return
-    except urllib.error.URLError:
-        print("Could not connect to GitHub.")
-        return
+        found_branch, raw_content = fetch_raw_direct(owner, repo, branch, clean_filename)
+        if raw_content is not None:
+            actual_branch = found_branch
+            content = raw_content
     except UnicodeDecodeError:
         print("The file is not UTF-8 text, so it cannot be displayed or saved as text.")
         return
+    except urllib.error.HTTPError as e:
+        print(f"Download failed: HTTP {e.code}")
+        return
+    except urllib.error.URLError:
+        print("Could not connect to GitHub.")
+        return
+
+    # 2. If direct fetch didn't find the file (404), fall back to smart repository tree search
+    if content is None:
+        try:
+            actual_branch, tree_data = get_repo_tree_with_branch(owner, repo, branch)
+            matched = resolve_file_in_tree(tree_data, clean_filename)
+            if matched:
+                resolved_path = matched
+                raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{actual_branch}/{resolved_path}"
+                content = download_url(raw_url)
+                if resolved_path != clean_filename:
+                    print(f"(Resolved '{clean_filename}' -> '{resolved_path}')")
+            else:
+                # Check other public repositories for the same user
+                other_repo, other_match = find_file_in_other_repos(owner, repo, clean_filename)
+                if other_repo:
+                    print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
+                    print(f"\n[Tip] Found '{other_match}' in repository '{other_repo}'!")
+                    print(f"To fetch it, run:\n  codefetch {owner}/{other_repo} {other_match}")
+                    return
+                else:
+                    print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
+                    print(f"Run 'codefetch -l {owner}/{repo}' to see available files.")
+                    return
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                print(f"Repository or branch not found: {owner}/{repo} ({branch})")
+            else:
+                print(f"Could not search repository: HTTP {e.code}")
+            return
+        except urllib.error.URLError:
+            print("Could not connect to GitHub.")
+            return
+        except UnicodeDecodeError:
+            print("The file is not UTF-8 text, so it cannot be displayed or saved as text.")
+            return
+        except Exception:
+            print(f"File not found: '{clean_filename}' in {owner}/{repo}.")
+            return
 
     if content is None:
         return
@@ -423,7 +489,7 @@ def fetch_file(filename, owner=None, repo=None, branch=DEFAULT_BRANCH,
         try:
             with open(out_name, "w", encoding="utf-8") as f:
                 f.write(content)
-            print(f"Downloaded: {out_name} (from {owner}/{repo})")
+            print(f"Downloaded: {out_name} (from {owner}/{repo}@{actual_branch})")
         except Exception as e:
             print(f"Error saving file '{out_name}': {e}")
 
@@ -440,76 +506,27 @@ class CodefetchParser(argparse.ArgumentParser):
 
 
 def build_parser():
-    """Build argument parser with full CLI options."""
     parser = CodefetchParser(
         prog="codefetch",
-        add_help=True,
+        description="Fetch code files from GitHub repositories.",
+        add_help=False,
     )
-    parser.add_argument(
-        "args",
-        nargs="*",
-        help="Target specification: <owner>/<repo> <filename> or <filename>",
-    )
-    parser.add_argument(
-        "-r", "--repo",
-        default=None,
-        help="Repository name or URL (e.g. repo or owner/repo)",
-    )
-    parser.add_argument(
-        "-u", "--user",
-        default=None,
-        help="GitHub user/org name",
-    )
-    parser.add_argument(
-        "-b", "--branch",
-        default=None,
-        help=f"Branch name (default: {DEFAULT_BRANCH})",
-    )
-    parser.add_argument(
-        "-l", "--list",
-        action="store_true",
-        help="List available code files in the repository",
-    )
-    parser.add_argument(
-        "-R", "--repos",
-        action="store_true",
-        help="List all public repositories for a user",
-    )
-    parser.add_argument(
-        "-s", "--show",
-        action="store_true",
-        help="Display file content in terminal without saving to disk",
-    )
-    parser.add_argument(
-        "-o", "--output",
-        default=None,
-        help="Custom destination filename or output path",
-    )
-    parser.add_argument(
-        "--set-default",
-        metavar="REPO",
-        help="Set persistent default repository in local config",
-    )
-    parser.add_argument(
-        "--set-default-user",
-        metavar="USER",
-        help="Set persistent default GitHub user in local config",
-    )
-    parser.add_argument(
-        "--config",
-        action="store_true",
-        help="Display current CodeFetch configuration",
-    )
-    parser.add_argument(
-        "--reset-config",
-        action="store_true",
-        help="Reset configuration back to defaults",
-    )
-    parser.add_argument(
-        "-v", "--version",
-        action="version",
-        version="codefetch 1.2.2",
-    )
+
+    parser.add_argument("args", nargs="*", help="Repository and filename targets")
+    parser.add_argument("-s", "--show", action="store_true", help="Print file content to terminal")
+    parser.add_argument("-l", "--list", action="store_true", help="List code files in repository")
+    parser.add_argument("-R", "--repos", action="store_true", help="List public repositories for a user")
+    parser.add_argument("-r", "--repo", type=str, help="Repository name or URL")
+    parser.add_argument("-u", "--user", type=str, help="GitHub username")
+    parser.add_argument("-b", "--branch", type=str, help="Branch name (default: main)")
+    parser.add_argument("-o", "--output", type=str, help="Custom output filename or path")
+    parser.add_argument("--set-default", type=str, help="Save default repository (e.g. owner/repo)")
+    parser.add_argument("--set-default-user", type=str, help="Save default GitHub user")
+    parser.add_argument("--config", action="store_true", help="Display active configuration")
+    parser.add_argument("--reset-config", action="store_true", help="Reset configuration back to defaults")
+    parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-h", "--help", action="help", help="Show help message")
+
     return parser
 
 
