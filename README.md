@@ -13,6 +13,7 @@ CodeFetch is a lightweight command-line utility and Python library designed to q
 - **Automatic Path & Case Resolution**: Automatically resolves case mismatches and finds files nested inside subdirectories.
 - **Repository Discovery**: List all public repositories for any GitHub user with `--repos`.
 - **Tree Exploration**: List all supported code files within a repository with `--list`.
+- **Self-Updating**: Keep CodeFetch updated to the latest PyPI release with `codefetch --update`.
 - **Python Library Support**: Import and use programmatically with `import codefetch as cf`.
 - **Optional Persistent Defaults**: Save a default repository or user with `--set-default` if you frequently work with the same repository.
 - **Zero Runtime Dependencies**: Built using only the Python standard library with zero third-party dependencies.
@@ -107,6 +108,13 @@ codefetch --config
 codefetch --reset-config
 ```
 
+### 5. Self-Updating
+
+```bash
+# Update CodeFetch to the latest version published on PyPI
+codefetch --update
+```
+
 ---
 
 ## Python API Usage
@@ -141,11 +149,12 @@ print(f"Found {len(files)} files")
 | `-R`, `--repos` | List public repositories for a user | `codefetch -R -u username` |
 | `-r`, `--repo` | Specify repository name or URL | `codefetch -r repo main.py` |
 | `-u`, `--user` | Specify GitHub username or organization | `codefetch -u username -r repo main.py` |
-| `-b`, `--branch` | Branch name (default: `main`) | `codefetch -b master owner/repo Makefile` |
+| `-b`, `--branch` | Branch name (default: repo default branch) | `codefetch -b master owner/repo Makefile` |
 | `--set-default` | Set persistent default repository | `codefetch --set-default owner/repo` |
 | `--set-default-user` | Set persistent default user | `codefetch --set-default-user username` |
 | `--config` | Display active configuration | `codefetch --config` |
 | `--reset-config` | Reset configuration back to defaults | `codefetch --reset-config` |
+| `-U`, `--update` | Update CodeFetch to latest PyPI version | `codefetch --update` |
 | `-v`, `--version` | Display version information | `codefetch --version` |
 | `-h`, `--help` | Display help and usage message | `codefetch --help` |
 

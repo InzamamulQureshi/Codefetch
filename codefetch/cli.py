@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -14,11 +15,10 @@ from pathlib import Path
 
 DEFAULT_OWNER = None
 DEFAULT_REPO = None
-DEFAULT_BRANCH = None
 
 CONFIG_FILE = Path.home() / ".codefetch.json"
 
-__version__ = "1.2.4"
+__version__ = "1.2.5"
 
 # Supported code, data, and config extensions
 CODE_EXTENSIONS = {
@@ -62,6 +62,7 @@ USAGE:
   codefetch -s <owner>/<repo> <filename>   Preview file in terminal without saving
   codefetch -l <owner>/<repo>              List all code files in a repository
   codefetch -R <username>                  List public repositories for a user
+  codefetch --update                       Update CodeFetch to the latest version
 
 POPULAR EXAMPLES:
   # Download from any repository:
@@ -98,6 +99,7 @@ FLAGS & OPTIONS:
   --set-default-user <user> Save default user/organization
   --config                  Show current saved configuration
   --reset-config            Reset configuration back to defaults
+  -U, --update              Update CodeFetch to the latest version from PyPI
   -v, --version             Show version number
   -h, --help                Show this help message
 """
@@ -122,7 +124,7 @@ def load_config():
 
 
 def save_config(owner=None, repo=None):
-    """Save user configuration to ~/.codefetch.json (no branch saved in config)."""
+    """Save user configuration to ~/.codefetch.json."""
     cfg = load_config()
     if owner is not None:
         cfg["owner"] = owner
@@ -478,7 +480,6 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
 
     # Case A: Branch parameter was explicitly entered by the user
     if branch:
-        # First, check if the specified branch exists
         branch_exists = check_branch_exists(owner, repo, branch)
 
         if not branch_exists:
@@ -490,7 +491,6 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
                 print(f"Available branches in {owner}/{repo}: {', '.join(shown)}{extra}")
             print(f"Trying default branch '{default_branch}'...")
 
-            # Fall back to default branch
             actual_branch = default_branch
             try:
                 content = fetch_raw_single(owner, repo, default_branch, clean_filename)
@@ -501,7 +501,6 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
                 pass
 
             if content is None:
-                # Try tree on default branch
                 try:
                     tree_data = get_repo_tree(owner, repo, default_branch)
                     matched = resolve_file_in_tree(tree_data, clean_filename)
@@ -519,7 +518,6 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
                 return
 
         else:
-            # The specified branch exists! First try direct fetch from it
             actual_branch = branch
             try:
                 content = fetch_raw_single(owner, repo, branch, clean_filename)
@@ -530,7 +528,6 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
                 pass
 
             if content is None:
-                # Direct raw 404ed, search tree of the specified branch
                 try:
                     tree_data = get_repo_tree(owner, repo, branch)
                     matched = resolve_file_in_tree(tree_data, clean_filename)
@@ -542,7 +539,6 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
                 except Exception:
                     pass
 
-            # If file not in specified branch, check default branch as well
             if content is None and branch.lower() != default_branch.lower():
                 print(f"Notice: File '{clean_filename}' not found on branch '{branch}'.")
                 available_branches = get_repo_branches(owner, repo)
@@ -593,7 +589,6 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
             return
 
         if content is None:
-            # Tree search on default branch
             try:
                 tree_data = get_repo_tree(owner, repo, default_branch)
                 matched = resolve_file_in_tree(tree_data, clean_filename)
@@ -603,7 +598,6 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
                     if resolved_path != clean_filename:
                         print(f"(Resolved '{clean_filename}' -> '{resolved_path}')")
                 else:
-                    # Check other public repositories for the same user
                     other_repo, other_match = find_file_in_other_repos(owner, repo, clean_filename)
                     if other_repo:
                         print(f"File not found: '{clean_filename}' in {owner}/{repo} ({default_branch}).")
@@ -639,6 +633,56 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
             print(f"Error saving file '{out_name}': {e}")
 
 
+def parse_version_tuple(v_str):
+    """Parse version string like '1.2.5' into a comparable tuple of integers."""
+    try:
+        return tuple(int(x) for x in re.findall(r"\d+", v_str))
+    except Exception:
+        return (0,)
+
+
+def update_codefetch():
+    """Update codefetch-cli to the latest version from PyPI."""
+    print("Checking for updates from PyPI...")
+    package_name = "codefetch-cli"
+    latest_version = None
+
+    try:
+        url = f"https://pypi.org/pypi/{package_name}/json"
+        req = urllib.request.Request(url, headers={"User-Agent": "codefetch"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            latest_version = data.get("info", {}).get("version")
+    except Exception as e:
+        print(f"Note: Could not check PyPI metadata ({e}).")
+
+    if latest_version:
+        curr_tuple = parse_version_tuple(__version__)
+        latest_tuple = parse_version_tuple(latest_version)
+
+        if latest_tuple <= curr_tuple:
+            print(f"CodeFetch is already up to date (version {__version__}).")
+            return
+
+        print(f"Update available: v{latest_version} (current: v{__version__})")
+        print(f"Updating {package_name}...")
+    else:
+        print(f"Updating {package_name} to latest version...")
+
+    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package_name]
+    try:
+        result = subprocess.run(cmd)
+        if result.returncode == 0:
+            target_v = f"v{latest_version}" if latest_version else "the latest version"
+            print(f"\nSuccessfully updated CodeFetch to {target_v}!")
+        else:
+            print(f"\nUpdate failed (exit code {result.returncode}).")
+            print(f"You can manually update with: pip install --upgrade {package_name}")
+    except Exception as e:
+        print(f"\nError running update: {e}")
+        print(f"You can manually update with: pip install --upgrade {package_name}")
+
+
 class CodefetchParser(argparse.ArgumentParser):
     """Custom parser providing clean, intuitive help formatting."""
 
@@ -669,6 +713,7 @@ def build_parser():
     parser.add_argument("--set-default-user", type=str, help="Save default GitHub user")
     parser.add_argument("--config", action="store_true", help="Display active configuration")
     parser.add_argument("--reset-config", action="store_true", help="Reset configuration back to defaults")
+    parser.add_argument("-U", "--update", action="store_true", help="Update CodeFetch to the latest version")
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-h", "--help", action="help", help="Show help message")
 
@@ -738,6 +783,11 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
+    # Handle --update
+    if args.update:
+        update_codefetch()
+        return
+
     config = load_config()
     default_owner = config.get("owner", DEFAULT_OWNER)
     default_repo = config.get("repo", DEFAULT_REPO)
@@ -776,7 +826,6 @@ def main():
         print("CodeFetch Configuration:")
         print(f"  Default User:        {default_owner or 'None (not set)'}")
         print(f"  Default Repository:  {default_repo or 'None (not set)'}")
-        print("  Default Branch:      None (auto-detect repository default)")
         print(f"  Config File:         {CONFIG_FILE}")
         return
 

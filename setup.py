@@ -7,7 +7,7 @@ long_description = readme_path.read_text(encoding="utf-8") if readme_path.exists
 
 setup(
     name="codefetch-cli",
-    version="1.2.4",
+    version="1.2.5",
     description="Quickly fetch code files from GitHub repositories with simple commands",
     long_description=long_description,
     long_description_content_type="text/markdown",
