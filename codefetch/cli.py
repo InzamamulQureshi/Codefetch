@@ -18,7 +18,7 @@ DEFAULT_REPO = None
 
 CONFIG_FILE = Path.home() / ".codefetch.json"
 
-__version__ = "1.2.5"
+__version__ = "1.2.6"
 
 # Supported code, data, and config extensions
 CODE_EXTENSIONS = {
@@ -63,6 +63,7 @@ USAGE:
   codefetch -l <owner>/<repo>              List all code files in a repository
   codefetch -R <username>                  List public repositories for a user
   codefetch --update                       Update CodeFetch to the latest version
+  codefetch --uninstall                    Uninstall CodeFetch from your system
 
 POPULAR EXAMPLES:
   # Download from any repository:
@@ -79,6 +80,10 @@ POPULAR EXAMPLES:
   # Explore repositories and files:
   codefetch -l torvalds/linux              # list files in a repo
   codefetch -R torvalds                    # list repos belonging to user
+
+  # Package management:
+  codefetch --update                       # update to latest PyPI release
+  codefetch --uninstall                    # uninstall CodeFetch package
 
 SETTING A DEFAULT REPOSITORY (OPTIONAL):
   If you frequently work with the same repo, you can set it as default:
@@ -100,6 +105,8 @@ FLAGS & OPTIONS:
   --config                  Show current saved configuration
   --reset-config            Reset configuration back to defaults
   -U, --update              Update CodeFetch to the latest version from PyPI
+  --uninstall               Uninstall CodeFetch from your system
+  -y, --yes                 Confirm uninstall without prompting
   -v, --version             Show version number
   -h, --help                Show this help message
 """
@@ -634,7 +641,7 @@ def fetch_file(filename, owner=None, repo=None, branch=None,
 
 
 def parse_version_tuple(v_str):
-    """Parse version string like '1.2.5' into a comparable tuple of integers."""
+    """Parse version string like '1.2.6' into a comparable tuple of integers."""
     try:
         return tuple(int(x) for x in re.findall(r"\d+", v_str))
     except Exception:
@@ -683,6 +690,41 @@ def update_codefetch():
         print(f"You can manually update with: pip install --upgrade {package_name}")
 
 
+def uninstall_codefetch(yes=False):
+    """Uninstall codefetch-cli package from system."""
+    if not yes:
+        try:
+            choice = input("Are you sure you want to uninstall CodeFetch? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled.")
+            return
+
+        if choice not in ("y", "yes"):
+            print("Uninstall cancelled.")
+            return
+
+    # Clean up ~/.codefetch.json configuration file if present
+    if CONFIG_FILE.exists():
+        try:
+            CONFIG_FILE.unlink()
+            print(f"Removed configuration file: {CONFIG_FILE}")
+        except Exception:
+            pass
+
+    print("Uninstalling codefetch-cli...")
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "codefetch-cli"]
+    try:
+        result = subprocess.run(cmd)
+        if result.returncode == 0:
+            print("\nSuccessfully uninstalled CodeFetch.")
+        else:
+            print(f"\nUninstall failed (exit code {result.returncode}).")
+            print("You can manually uninstall with: pip uninstall codefetch-cli")
+    except Exception as e:
+        print(f"\nError during uninstall: {e}")
+        print("You can manually uninstall with: pip uninstall codefetch-cli")
+
+
 class CodefetchParser(argparse.ArgumentParser):
     """Custom parser providing clean, intuitive help formatting."""
 
@@ -713,7 +755,9 @@ def build_parser():
     parser.add_argument("--set-default-user", type=str, help="Save default GitHub user")
     parser.add_argument("--config", action="store_true", help="Display active configuration")
     parser.add_argument("--reset-config", action="store_true", help="Reset configuration back to defaults")
-    parser.add_argument("-U", "--update", action="store_true", help="Update CodeFetch to the latest version")
+    parser.add_argument("-U", "--update", action="store_true", help="Update CodeFetch to the latest version from PyPI")
+    parser.add_argument("--uninstall", action="store_true", help="Uninstall CodeFetch from your system")
+    parser.add_argument("-y", "--yes", action="store_true", help="Confirm uninstall without prompting")
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-h", "--help", action="help", help="Show help message")
 
@@ -786,6 +830,11 @@ def main():
     # Handle --update
     if args.update:
         update_codefetch()
+        return
+
+    # Handle --uninstall
+    if args.uninstall:
+        uninstall_codefetch(yes=args.yes)
         return
 
     config = load_config()

@@ -14,6 +14,7 @@ CodeFetch is a lightweight command-line utility and Python library designed to q
 - **Repository Discovery**: List all public repositories for any GitHub user with `--repos`.
 - **Tree Exploration**: List all supported code files within a repository with `--list`.
 - **Self-Updating**: Keep CodeFetch updated to the latest PyPI release with `codefetch --update`.
+- **Clean Uninstall**: Easily remove CodeFetch and its configuration with `codefetch --uninstall`.
 - **Python Library Support**: Import and use programmatically with `import codefetch as cf`.
 - **Optional Persistent Defaults**: Save a default repository or user with `--set-default` if you frequently work with the same repository.
 - **Zero Runtime Dependencies**: Built using only the Python standard library with zero third-party dependencies.
@@ -108,11 +109,14 @@ codefetch --config
 codefetch --reset-config
 ```
 
-### 5. Self-Updating
+### 5. Package Management
 
 ```bash
 # Update CodeFetch to the latest version published on PyPI
 codefetch --update
+
+# Uninstall CodeFetch and remove local configuration
+codefetch --uninstall
 ```
 
 ---
@@ -154,7 +158,8 @@ print(f"Found {len(files)} files")
 | `--set-default-user` | Set persistent default user | `codefetch --set-default-user username` |
 | `--config` | Display active configuration | `codefetch --config` |
 | `--reset-config` | Reset configuration back to defaults | `codefetch --reset-config` |
-| `-U`, `--update` | Update CodeFetch to latest PyPI version | `codefetch --update` |
+| `-U`, `--update` | Update CodeFetch to latest PyPI release | `codefetch --update` |
+| `--uninstall` | Uninstall CodeFetch from your system | `codefetch --uninstall` |
 | `-v`, `--version` | Display version information | `codefetch --version` |
 | `-h`, `--help` | Display help and usage message | `codefetch --help` |
 
