@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -648,6 +649,54 @@ def parse_version_tuple(v_str):
         return (0,)
 
 
+def _prepare_windows_exe():
+    """
+    On Windows, an actively executing .exe cannot be deleted or overwritten by pip ([WinError 5]).
+    However, Windows NT fully allows renaming an executing binary.
+    We rename codefetch.exe to codefetch.exe.old so that pip can write or delete without permission errors.
+    Returns the path to the renamed .old file, or None.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        scripts_dir = Path(sys.executable).parent / "Scripts"
+        exe_path = scripts_dir / "codefetch.exe"
+        if not exe_path.exists():
+            exe_path = Path(sys.executable).parent / "codefetch.exe"
+        if not exe_path.exists():
+            which_path = shutil.which("codefetch")
+            if which_path:
+                exe_path = Path(which_path)
+
+        if exe_path and exe_path.exists():
+            old_path = exe_path.with_name("codefetch.exe.old")
+            if old_path.exists():
+                try:
+                    old_path.unlink()
+                except Exception:
+                    pass
+            exe_path.rename(old_path)
+            return old_path
+    except Exception:
+        pass
+    return None
+
+
+def _cleanup_windows_exe(old_path):
+    """Clean up the temporary .old file after pip completes."""
+    if not old_path or not old_path.exists():
+        return
+    try:
+        old_path.unlink()
+    except Exception:
+        # File may still be briefly held by the current process. Schedule silent background deletion.
+        try:
+            cmd = f'cmd.exe /c "ping 127.0.0.1 -n 2 > nul & del /f /q \"{old_path}\""'
+            subprocess.Popen(cmd, shell=True, creationflags=0x08000000)  # CREATE_NO_WINDOW
+        except Exception:
+            pass
+
+
 def update_codefetch():
     """Update codefetch-cli to the latest version from PyPI."""
     print("Checking for updates from PyPI...")
@@ -676,36 +725,22 @@ def update_codefetch():
         print(f"Checking {package_name}...")
 
     print(f"Updating {package_name}...")
+    old_exe = _prepare_windows_exe()
 
-    if sys.platform == "win32":
-        # On Windows, pip cannot overwrite codefetch.exe while this process is executing it.
-        # Spawn PowerShell to wait 800ms for this process to exit, then run pip install cleanly.
-        target_v = f"v{latest_version}" if latest_version else "latest version"
-        ps_cmd = (
-            f"Start-Sleep -Milliseconds 800; "
-            f"& '{sys.executable}' -m pip install --upgrade {package_name}; "
-            f"if ($LASTEXITCODE -eq 0) {{ Write-Host '`nSuccessfully updated CodeFetch to {target_v}!' }} "
-            f"else {{ Write-Host '`nUpdate failed. You can manually update with: pip install --upgrade {package_name}' }}"
-        )
-        try:
-            subprocess.Popen(["powershell", "-NoProfile", "-Command", ps_cmd])
-            sys.exit(0)
-        except Exception as e:
-            print(f"\nError launching updater: {e}")
+    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package_name]
+    try:
+        result = subprocess.run(cmd)
+        _cleanup_windows_exe(old_exe)
+        if result.returncode == 0:
+            target_v = f"v{latest_version}" if latest_version else "the latest version"
+            print(f"\nSuccessfully updated CodeFetch to {target_v}!")
+        else:
+            print(f"\nUpdate failed (exit code {result.returncode}).")
             print(f"You can manually update with: pip install --upgrade {package_name}")
-    else:
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package_name]
-        try:
-            result = subprocess.run(cmd)
-            if result.returncode == 0:
-                target_v = f"v{latest_version}" if latest_version else "the latest version"
-                print(f"\nSuccessfully updated CodeFetch to {target_v}!")
-            else:
-                print(f"\nUpdate failed (exit code {result.returncode}).")
-                print(f"You can manually update with: pip install --upgrade {package_name}")
-        except Exception as e:
-            print(f"\nError running update: {e}")
-            print(f"You can manually update with: pip install --upgrade {package_name}")
+    except Exception as e:
+        _cleanup_windows_exe(old_exe)
+        print(f"\nError running update: {e}")
+        print(f"You can manually update with: pip install --upgrade {package_name}")
 
 
 def uninstall_codefetch(yes=False):
@@ -730,35 +765,21 @@ def uninstall_codefetch(yes=False):
             pass
 
     print("Uninstalling codefetch-cli...")
+    old_exe = _prepare_windows_exe()
 
-    if sys.platform == "win32":
-        # On Windows, pip cannot delete codefetch.exe while this process is executing it.
-        # Spawn PowerShell to wait 800ms for this process to exit, then run pip uninstall cleanly.
-        ps_cmd = (
-            f"Start-Sleep -Milliseconds 800; "
-            f"& '{sys.executable}' -m pip uninstall -y codefetch-cli; "
-            f"& '{sys.executable}' -m pip uninstall -y codefetch; "
-            f"if ($LASTEXITCODE -eq 0) {{ Write-Host '`nSuccessfully uninstalled CodeFetch.' }} "
-            f"else {{ Write-Host '`nUninstall failed. You can manually uninstall with: pip uninstall codefetch-cli' }}"
-        )
-        try:
-            subprocess.Popen(["powershell", "-NoProfile", "-Command", ps_cmd])
-            sys.exit(0)
-        except Exception as e:
-            print(f"\nError launching uninstaller: {e}")
+    cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "codefetch-cli"]
+    try:
+        result = subprocess.run(cmd)
+        _cleanup_windows_exe(old_exe)
+        if result.returncode == 0:
+            print("\nSuccessfully uninstalled CodeFetch.")
+        else:
+            print(f"\nUninstall failed (exit code {result.returncode}).")
             print("You can manually uninstall with: pip uninstall codefetch-cli")
-    else:
-        cmd = [sys.executable, "-m", "pip", "uninstall", "-y", "codefetch-cli"]
-        try:
-            result = subprocess.run(cmd)
-            if result.returncode == 0:
-                print("\nSuccessfully uninstalled CodeFetch.")
-            else:
-                print(f"\nUninstall failed (exit code {result.returncode}).")
-                print("You can manually uninstall with: pip uninstall codefetch-cli")
-        except Exception as e:
-            print(f"\nError during uninstall: {e}")
-            print("You can manually uninstall with: pip uninstall codefetch-cli")
+    except Exception as e:
+        _cleanup_windows_exe(old_exe)
+        print(f"\nError during uninstall: {e}")
+        print("You can manually uninstall with: pip uninstall codefetch-cli")
 
 
 class CodefetchParser(argparse.ArgumentParser):
