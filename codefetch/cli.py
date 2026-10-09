@@ -18,12 +18,83 @@ DEFAULT_BRANCH = "main"
 
 CONFIG_FILE = Path.home() / ".codefetch.json"
 
-# Supported code extensions
+# Supported code, data, and config extensions
 CODE_EXTENSIONS = {
-    ".py", ".c", ".cpp", ".h", ".hpp", ".java", ".js", ".ts",
-    ".sql", ".html", ".css", ".txt", ".asm", ".s", ".hex",
-    ".json", ".sh", ".rs", ".go", ".cs", ".ipynb", ".md"
+    # Data & Tables
+    ".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml", ".toml",
+    ".xml", ".ini", ".cfg", ".conf", ".env", ".properties",
+    # Python & Data Science
+    ".py", ".pyw", ".ipynb", ".r", ".rmd", ".m",
+    # C / C++ / Systems
+    ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx", ".rs", ".go",
+    # JVM & .NET
+    ".java", ".kt", ".kts", ".scala", ".cs", ".fs", ".vb",
+    # Web & Frontend
+    ".html", ".htm", ".css", ".scss", ".sass", ".less",
+    ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte", ".php",
+    # Mobile & Apple
+    ".swift", ".dart",
+    # Scripts & Shells
+    ".sh", ".bash", ".zsh", ".fish", ".bat", ".cmd", ".ps1", ".psm1",
+    ".lua", ".rb", ".pl", ".pm",
+    # Assembly & Hardware
+    ".asm", ".s", ".hex", ".v", ".sv", ".vhdl", ".vhd",
+    # Database & Schema
+    ".sql", ".graphql", ".gql", ".proto",
+    # Documents & Text
+    ".txt", ".text", ".md", ".markdown", ".rst", ".tex", ".log"
 }
+
+# Recognized extensionless or special build files
+NAMED_FILES = {
+    "dockerfile", "makefile", "gemfile", "procfile", "vagrantfile",
+    "cmakelists.txt", "jenkinsfile", "license"
+}
+
+HELP_MESSAGE = """\
+CodeFetch - Download single code files from GitHub without cloning entire repos.
+
+USAGE:
+  codefetch <filename>                  Download a file from default repo (MPL)
+  codefetch <repo> <filename>           Download from another repo (e.g. DS EXP1.c)
+  codefetch <user>/<repo> <filename>    Download from any GitHub user/repo
+
+QUICK EXAMPLES:
+  Download a file:
+    codefetch 8.1.py                    Save 8.1.py to current directory
+    codefetch data.csv                  Save data.csv to current directory
+    codefetch DS EXP1.c                 Save EXP1.c from repo 'DS'
+    codefetch DS EXP1.c -o my_code.c    Save with a custom output filename
+    codefetch InzamamulQureshi/Codefetch setup.py
+
+  View code in terminal (without downloading):
+    codefetch -s 8.1.py                 Display 8.1.py in terminal
+    codefetch -s DS EXP1.c              Display EXP1.c in terminal
+
+  Browse files and repositories:
+    codefetch -l                        List all code files in default repo (MPL)
+    codefetch -l DS                     List all code files in repo 'DS'
+    codefetch -l user/repo              List code files in any user repository
+    codefetch -R                        List all repositories of default user (Reaver101)
+    codefetch -R -u <username>          List all repositories of any GitHub user
+
+SETTINGS & DEFAULTS:
+  codefetch --set-default <repo>        Set permanent default repo (e.g. DS)
+  codefetch --set-default-user <user>   Set permanent default GitHub user
+  codefetch --config                    View current active settings
+  codefetch --reset-config              Reset all settings back to default
+
+OPTIONS:
+  -s, --show             View file contents in terminal instead of saving
+  -o, --output <file>    Custom filename or path to save the downloaded file
+  -l, --list             List available code files in the repository
+  -R, --repos            List all public repositories for the user
+  -r, --repo <name>      Specify repository name or URL
+  -u, --user <name>      Specify GitHub username (default: Reaver101)
+  -b, --branch <name>    Specify branch name (default: main)
+  -v, --version          Show version number
+  -h, --help             Show this help guide
+"""
 
 
 def load_config():
@@ -171,11 +242,12 @@ def list_files(owner, repo, branch="main"):
                 continue
 
             path = item.get("path", "")
+            base_name = path.rsplit("/", 1)[-1].lower()
             suffix = ""
-            if "." in path.rsplit("/", 1)[-1]:
-                suffix = "." + path.rsplit("/", 1)[-1].rsplit(".", 1)[-1].lower()
+            if "." in base_name:
+                suffix = "." + base_name.rsplit(".", 1)[-1]
 
-            if suffix in CODE_EXTENSIONS:
+            if suffix in CODE_EXTENSIONS or base_name in NAMED_FILES:
                 files.append(path)
 
         files.sort(key=str.lower)
@@ -335,38 +407,22 @@ def fetch_file(filename, owner=DEFAULT_OWNER, repo=DEFAULT_REPO, branch=DEFAULT_
             print(f"Error saving file '{out_name}': {e}")
 
 
+class CodefetchParser(argparse.ArgumentParser):
+    """Custom parser providing clean, intuitive help formatting."""
+
+    def format_help(self):
+        return HELP_MESSAGE
+
+    def error(self, message):
+        sys.stderr.write(f"Error: {message}\n\nRun 'codefetch --help' for usage instructions.\n")
+        sys.exit(2)
+
+
 def build_parser():
     """Build argument parser with full CLI options."""
-    parser = argparse.ArgumentParser(
+    parser = CodefetchParser(
         prog="codefetch",
-        description="Quickly fetch code files from GitHub repositories with simple commands.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Usage Examples:
-
-  Fetch from default repository:
-    codefetch 8.1.py
-    codefetch --show 8.1.py
-    codefetch --list
-
-  Fetch from other repositories:
-    codefetch -r DS EXP1.c
-    codefetch DS EXP1.c
-    codefetch DS/EXP1.c
-    codefetch -r DS --list
-
-  Fetch from any GitHub user and repository:
-    codefetch InzamamulQureshi/Codefetch setup.py
-    codefetch -u InzamamulQureshi -r Codefetch setup.py
-    codefetch --list InzamamulQureshi/Codefetch
-    codefetch --repos -u InzamamulQureshi
-
-  Configuration:
-    codefetch --set-default DS
-    codefetch --set-default-user InzamamulQureshi
-    codefetch --config
-    codefetch --reset-config
-"""
+        add_help=True,
     )
     parser.add_argument(
         "args",
@@ -431,7 +487,7 @@ Usage Examples:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        version="codefetch 1.2.0",
+        version="codefetch 1.2.1",
     )
     return parser
 
@@ -560,7 +616,7 @@ def main():
         list_files(owner=target_owner, repo=target_repo, branch=branch)
         return
 
-    # Handle fetching or viewing file
+    # If no action and no files provided, print the clean help guide
     if not args.args and not args.repo:
         parser.print_help()
         return
@@ -579,8 +635,11 @@ def main():
     )
 
     if not resolved_filename:
-        print("Error: No filename specified.")
-        parser.print_help()
+        print("Error: No filename specified.\n")
+        print("Usage:")
+        print("  codefetch <filename>                  Download a file")
+        print("  codefetch <repo> <filename>           Download from a repository")
+        print("  codefetch --help                      View full guide and examples")
         return
 
     fetch_file(

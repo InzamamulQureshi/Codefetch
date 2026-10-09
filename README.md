@@ -149,9 +149,14 @@ codefetch --reset-config
 
 ## Supported File Extensions
 
-CodeFetch recognizes and lists common source and document files:
-
-`.py`, `.c`, `.cpp`, `.h`, `.hpp`, `.java`, `.js`, `.ts`, `.sql`, `.html`, `.css`, `.txt`, `.asm`, `.s`, `.hex`, `.json`, `.sh`, `.rs`, `.go`, `.cs`, `.ipynb`, `.md`
+- **Data & Tables**: `.csv`, `.tsv`, `.json`, `.jsonl`, `.yaml`, `.yml`, `.toml`, `.xml`, `.ini`, `.cfg`, `.conf`, `.env`
+- **Data Science**: `.ipynb`, `.py`, `.r`, `.rmd`, `.m`
+- **Languages**: `.c`, `.cpp`, `.h`, `.hpp`, `.rs`, `.go`, `.java`, `.kt`, `.cs`, `.swift`, `.dart`, `.php`
+- **Web**: `.html`, `.css`, `.scss`, `.js`, `.jsx`, `.ts`, `.tsx`, `.vue`, `.svelte`
+- **Scripts & Systems**: `.sh`, `.bash`, `.zsh`, `.fish`, `.bat`, `.cmd`, `.ps1`, `.lua`, `.rb`, `.asm`, `.s`, `.hex`
+- **Database & Schemas**: `.sql`, `.graphql`, `.gql`, `.proto`
+- **Documentation**: `.md`, `.markdown`, `.rst`, `.txt`, `.tex`, `.log`
+- **Build Files**: `Dockerfile`, `Makefile`, `CMakeLists.txt`, `Gemfile`, `Procfile`
 
 ---
 
