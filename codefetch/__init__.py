@@ -16,17 +16,17 @@ Usage in Python:
     files = cf.list("torvalds/linux")
 """
 
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 
 
-def get(target, filename=None, branch="main"):
+def get(target, filename=None, branch=None):
     """
     Fetch and return the text content of a file from GitHub.
 
     Args:
         target: 'owner/repo' or full path 'owner/repo/path/to/file' or full GitHub URL.
         filename: Optional path to file in repo if target is 'owner/repo'.
-        branch: Branch name (default: 'main', automatically falls back to 'master').
+        branch: Branch name (default: None, automatically detects repo default branch).
 
     Returns:
         str: File content.
@@ -37,8 +37,10 @@ def get(target, filename=None, branch="main"):
     """
     import urllib.request
     from .cli import (
-        fetch_raw_direct,
-        get_repo_tree_with_branch,
+        get_default_branch,
+        check_branch_exists,
+        fetch_raw_single,
+        get_repo_tree,
         resolve_file_in_tree,
         parse_repo_identifier,
         resolve_invocation,
@@ -49,7 +51,7 @@ def get(target, filename=None, branch="main"):
         file_path = filename.strip("/\\")
     else:
         owner, repo, resolved_branch, file_path = resolve_invocation(
-            [target], None, None, branch, None, None, "main"
+            [target], None, None, branch, None, None
         )
         if resolved_branch:
             branch = resolved_branch
@@ -57,24 +59,30 @@ def get(target, filename=None, branch="main"):
     if not owner or not repo or not file_path:
         raise ValueError(f"Could not resolve owner, repo, and filename from target='{target}', filename='{filename}'")
 
+    target_branch = branch
+    if not target_branch:
+        target_branch = get_default_branch(owner, repo)
+    elif not check_branch_exists(owner, repo, target_branch):
+        target_branch = get_default_branch(owner, repo)
+
     # 1. Try fast direct raw fetch
-    found_branch, content = fetch_raw_direct(owner, repo, branch, file_path)
+    content = fetch_raw_single(owner, repo, target_branch, file_path)
     if content is not None:
         return content
 
     # 2. Try repository tree search
-    actual_branch, tree_data = get_repo_tree_with_branch(owner, repo, branch)
+    tree_data = get_repo_tree(owner, repo, target_branch)
     matched = resolve_file_in_tree(tree_data, file_path)
     if matched:
-        url = f"https://raw.githubusercontent.com/{owner}/{repo}/{actual_branch}/{matched}"
+        url = f"https://raw.githubusercontent.com/{owner}/{repo}/{target_branch}/{matched}"
         req = urllib.request.Request(url, headers={"User-Agent": "codefetch"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.read().decode("utf-8")
 
-    raise FileNotFoundError(f"File '{file_path}' not found in {owner}/{repo} ({actual_branch})")
+    raise FileNotFoundError(f"File '{file_path}' not found in {owner}/{repo} ({target_branch})")
 
 
-def download(target, filename=None, output=None, branch="main"):
+def download(target, filename=None, output=None, branch=None):
     """
     Download a file from GitHub and save it locally.
 
@@ -82,7 +90,7 @@ def download(target, filename=None, output=None, branch="main"):
         target: 'owner/repo' or full path 'owner/repo/path/to/file'.
         filename: Optional path to file in repo if target is 'owner/repo'.
         output: Destination filename/path on local disk (default: original filename).
-        branch: Branch name (default: 'main').
+        branch: Branch name (default: None, automatically detects repo default branch).
 
     Returns:
         str: Path to the downloaded file.
@@ -99,20 +107,22 @@ def download(target, filename=None, output=None, branch="main"):
     return dest_name
 
 
-def list(target, branch="main"):
+def list(target, branch=None):
     """
     List supported code files in a repository.
 
     Args:
         target: 'owner/repo' or repository URL.
-        branch: Branch name (default: 'main').
+        branch: Branch name (default: None, automatically detects repo default branch).
 
     Returns:
         list[str]: Relative paths of code files in the repository.
     """
     from .cli import (
         parse_repo_identifier,
-        get_repo_tree_with_branch,
+        get_default_branch,
+        check_branch_exists,
+        get_repo_tree,
         CODE_EXTENSIONS,
         NAMED_FILES,
     )
@@ -121,7 +131,11 @@ def list(target, branch="main"):
     if not owner or not repo:
         raise ValueError(f"Invalid repository identifier: '{target}'")
 
-    actual_branch, tree_data = get_repo_tree_with_branch(owner, repo, branch)
+    target_branch = branch
+    if not target_branch or not check_branch_exists(owner, repo, target_branch):
+        target_branch = get_default_branch(owner, repo)
+
+    tree_data = get_repo_tree(owner, repo, target_branch)
     files = []
     for item in tree_data.get("tree", []):
         if item.get("type") != "blob":
